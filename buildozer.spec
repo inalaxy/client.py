@@ -15,3 +15,12 @@ osx.kivy_version = 2.3.0
 fullscreen = 0
 android.archs = arm64-v8a, armeabi-v7a
 android.allow_backup = True
+
+# ----------------------------------------------------
+# ADDED FOR COMPATIBILITY WITH MODERN ANDROID DEVICES
+# ----------------------------------------------------
+# (int) Target Android API, must be 34+ for modern Android versions
+android.api = 34
+
+# (int) Minimum API your APK will support (Android 5.0+)
+android.minapi = 21
