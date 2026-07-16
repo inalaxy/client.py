@@ -4,6 +4,7 @@ import time
 import sys
 import json
 import hashlib
+
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
@@ -16,6 +17,8 @@ from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.storage.jsonstore import JsonStore
 from kivy.clock import Clock
 from kivy.graphics import Color, RoundedRectangle, Line, Ellipse
+from kivy.core.window import Window
+from kivy.metrics import dp, sp
 
 PORT = 50002
 BROADCAST_IP = "255.255.255.255"
@@ -31,13 +34,12 @@ COLOR_TEXT_MUTED = (0.50, 0.53, 0.60, 1)   # Cool grey details
 COLOR_ONLINE = (0.06, 0.80, 0.48, 1)      # Emerald green status
 COLOR_OFFLINE = (0.84, 0.25, 0.25, 1)     # Deep crimson
 
-# Premium generated gradient pools for initials avatars
 AVATAR_COLORS = [
-    (0.31, 0.40, 0.93, 1), # Indigo
-    (0.06, 0.80, 0.48, 1), # Emerald
-    (0.85, 0.38, 0.18, 1), # Coral
-    (0.62, 0.31, 0.93, 1), # Purple
-    (0.18, 0.70, 0.85, 1), # Cyan
+    (0.31, 0.40, 0.93, 1),
+    (0.06, 0.80, 0.48, 1),
+    (0.85, 0.38, 0.18, 1),
+    (0.62, 0.31, 0.93, 1),
+    (0.18, 0.70, 0.85, 1),
 ]
 
 def get_initials(username: str) -> str:
@@ -52,14 +54,13 @@ def get_avatar_color(username: str) -> tuple:
     hash_val = int(hashlib.md5(username.lower().encode('utf-8')).hexdigest(), 16)
     return AVATAR_COLORS[hash_val % len(AVATAR_COLORS)]
 
-
-# --- HIGH-END CUSTOM UI COMPONENTS ---
+# --- HIGH-END CUSTOM UI COMPONENTS WITH DYNAMIC DENSITY SCALING ---
 
 class BackgroundBoxLayout(BoxLayout):
     def __init__(self, bg_color, radius=[0, 0, 0, 0], has_border=False, border_color=COLOR_BORDER, **kwargs):
         super().__init__(**kwargs)
         self.bg_color = bg_color
-        self.radius = radius
+        self.radius = [dp(r) for r in radius]  
         self.has_border = has_border
         self.border_color = border_color
         
@@ -68,7 +69,7 @@ class BackgroundBoxLayout(BoxLayout):
             self.rect = RoundedRectangle(size=self.size, pos=self.pos, radius=self.radius)
             if self.has_border:
                 self.border_color_instruction = Color(*self.border_color)
-                self.border = Line(rounded_rectangle=(self.x, self.y, self.width, self.height, *self.radius), width=1.1)
+                self.border = Line(rounded_rectangle=(self.x, self.y, self.width, self.height, *self.radius), width=dp(1.1))
                 
         self.bind(size=self._update_rect, pos=self._update_rect)
 
@@ -78,11 +79,10 @@ class BackgroundBoxLayout(BoxLayout):
         if self.has_border:
             self.border.rounded_rectangle = (instance.x, instance.y, instance.width, instance.height, *self.radius)
 
-
 class VisualAvatar(BoxLayout):
-    """Dynamic procedural circle avatar rendering initials based on username hashing."""
     def __init__(self, username, size_hint=(None, None), size=(40, 40), **kwargs):
-        super().__init__(size_hint=size_hint, size=size, orientation='vertical', **kwargs)
+        scaled_size = (dp(size[0]), dp(size[1]))
+        super().__init__(size_hint=size_hint, size=scaled_size, orientation='vertical', **kwargs)
         self.username = username
         self.initials = get_initials(username)
         self.bg_color = get_avatar_color(username)
@@ -101,13 +101,11 @@ class VisualAvatar(BoxLayout):
         )
         self.lbl.bind(size=self.lbl.setter('text_size'))
         self.add_widget(self.lbl)
-        
         self.bind(pos=self._update_canvas, size=self._update_canvas)
 
     def _update_canvas(self, instance, value):
         self.circle.pos = instance.pos
         self.circle.size = instance.size
-
 
 class InteractiveButton(Button):
     def __init__(self, bg_color=COLOR_PRIMARY, radius=[8], **kwargs):
@@ -116,7 +114,7 @@ class InteractiveButton(Button):
         self.background_down = ""
         self.background_color = (0, 0, 0, 0)
         self.bg_color = bg_color
-        self.radius = radius
+        self.radius = [dp(r) for r in radius]
         self.font_name = "Roboto" if sys.platform != "win32" else "Arial"
         
         with self.canvas.before:
@@ -128,7 +126,6 @@ class InteractiveButton(Button):
         self.rect.pos = instance.pos
         self.rect.size = instance.size
 
-
 class PremiumTextInput(TextInput):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -137,33 +134,35 @@ class PremiumTextInput(TextInput):
         self.background_color = COLOR_SURFACE_LIGHT
         self.foreground_color = COLOR_TEXT_PRIMARY
         self.cursor_color = COLOR_PRIMARY
-        self.padding = [16, 14, 16, 14]
+        self.padding = [dp(16), dp(14), dp(16), dp(14)]
         self.font_size = '14sp'
         self.hint_text_color = COLOR_TEXT_MUTED
 
 
-# ==========================================
-# 1. PROFILE / ONBOARDING SCREEN
-# ==========================================
+# ==========================================# 1. PROFILE / ONBOARDING SCREEN# ==========================================
 class ProfileScreen(Screen):
     def __init__(self, app_instance, **kwargs):
         super().__init__(**kwargs)
         self.app = app_instance
 
-        main_layout = BackgroundBoxLayout(bg_color=COLOR_BG, orientation='vertical', padding=[40, 60, 40, 50], spacing=30)
+        main_layout = BackgroundBoxLayout(
+            bg_color=COLOR_BG, 
+            orientation='vertical', 
+            padding=[dp(24), dp(40), dp(24), dp(30)], 
+            spacing=dp(20)
+        )
 
-        # High-end branding header
-        header_box = BoxLayout(orientation='vertical', size_hint_y=None, height=130, spacing=10)
+        header_box = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(110), spacing=dp(8))
         title = Label(
-            text="DECENTRALIZED NODE",
-            font_size='26sp',
+            text="MESSENGO",
+            font_size='28sp',
             bold=True,
             color=COLOR_TEXT_PRIMARY,
             halign="center"
         )
         subtitle = Label(
             text="Secure. Zero Servers. Local LAN Mesh Routing.",
-            font_size='13sp',
+            font_size='12sp',
             color=COLOR_TEXT_MUTED,
             halign="center"
         )
@@ -171,15 +170,14 @@ class ProfileScreen(Screen):
         header_box.add_widget(subtitle)
         main_layout.add_widget(header_box)
 
-        # Profile Creation Card
         form_card = BackgroundBoxLayout(
             bg_color=COLOR_SURFACE, 
             radius=[16], 
             orientation='vertical', 
-            padding=[28, 30, 28, 30], 
-            spacing=20,
+            padding=[dp(20), dp(24), dp(20), dp(24)], 
+            spacing=dp(16),
             size_hint_y=None,
-            height=260,
+            height=dp(240),
             has_border=True
         )
 
@@ -189,18 +187,17 @@ class ProfileScreen(Screen):
             bold=True,
             color=COLOR_TEXT_MUTED,
             size_hint_y=None,
-            height=20,
+            height=dp(18),
             halign="left"
         )
         label_inst.bind(size=label_inst.setter('text_size'))
         form_card.add_widget(label_inst)
 
-        # Dynamic profile naming input
         self.username_input = PremiumTextInput(
             hint_text="e.g., John Doe, Node-99",
             multiline=False,
             size_hint_y=None,
-            height=54
+            height=dp(50)
         )
         form_card.add_widget(self.username_input)
 
@@ -208,31 +205,29 @@ class ProfileScreen(Screen):
             text="🟢 Active Node",
             values=("🟢 Active Node", "📡 In-game", "💻 Developing...", "☕ Away from desk"),
             size_hint_y=None,
-            height=50,
+            height=dp(48),
             background_normal="",
             background_color=COLOR_SURFACE_LIGHT,
             color=COLOR_TEXT_PRIMARY
         )
         form_card.add_widget(self.status_spinner)
 
-        # Error handling labels
-        self.error_label = Label(text="", color=COLOR_OFFLINE, size_hint_y=None, height=24, font_size='12sp', bold=True)
+        self.error_label = Label(text="", color=COLOR_OFFLINE, size_hint_y=None, height=dp(20), font_size='12sp', bold=True)
         form_card.add_widget(self.error_label)
 
         main_layout.add_widget(form_card)
 
-        # Primary call-to-action button
         join_btn = InteractiveButton(
             text="INITIALIZE PROFILE",
             bg_color=COLOR_PRIMARY,
             size_hint_y=None,
-            height=56,
+            height=dp(52),
             bold=True
         )
         join_btn.bind(on_release=self.register_user)
         main_layout.add_widget(join_btn)
 
-        main_layout.add_widget(Label())  # Layout Spacer
+        main_layout.add_widget(Label())
         self.add_widget(main_layout)
 
     def register_user(self, instance):
@@ -250,17 +245,24 @@ class ProfileScreen(Screen):
         self.app.setup_network_and_ui()
 
 
-# ==========================================
-# 2. MAIN CHAT INTERFACE SCREEN
-# ==========================================
+# ==========================================# 2. MAIN CHAT INTERFACE SCREEN# ==========================================
 class ChatScreen(Screen):
     def __init__(self, app_instance, **kwargs):
         super().__init__(**kwargs)
         self.app = app_instance
+        
         self.main_split = BoxLayout(orientation='horizontal')
 
-        # --- Sidebar (Left Navigation) ---
-        self.sidebar = BackgroundBoxLayout(bg_color=COLOR_BG, orientation='vertical', size_hint_x=0.30, padding=[12, 20, 12, 16], spacing=14)
+        # --- Sidebar Layout ---
+        self.sidebar = BackgroundBoxLayout(
+            bg_color=COLOR_BG, 
+            orientation='vertical', 
+            size_hint_x=0.35, 
+            padding=[dp(12), dp(16), dp(12), dp(12)], 
+            spacing=dp(12)
+        )
+        
+        Window.bind(on_resize=self._adjust_layout)
         
         lbl_online = Label(
             text="ACTIVE MESH PEERS",
@@ -268,47 +270,56 @@ class ChatScreen(Screen):
             bold=True,
             color=COLOR_TEXT_MUTED,
             size_hint_y=None,
-            height=24,
+            height=dp(24),
             halign="left"
         )
         lbl_online.bind(size=lbl_online.setter('text_size'))
         self.sidebar.add_widget(lbl_online)
 
-        self.peers_scroll = ScrollView(size_hint_y=0.82)
-        self.peers_list = GridLayout(cols=1, spacing=10, size_hint_y=None)
+        self.peers_scroll = ScrollView(size_hint_y=0.78)
+        self.peers_list = GridLayout(cols=1, spacing=dp(8), size_hint_y=None)
         self.peers_list.bind(minimum_height=self.peers_list.setter('height'))
         self.peers_scroll.add_widget(self.peers_list)
         self.sidebar.add_widget(self.peers_scroll)
 
-        # Dynamic Footer Displaying User profile details
         self.my_profile_box = BackgroundBoxLayout(
             bg_color=COLOR_SURFACE, 
             radius=[12], 
             orientation='horizontal', 
-            size_hint_y=0.12, 
-            padding=[10, 10, 10, 10], 
-            spacing=10,
+            size_hint_y=0.14, 
+            padding=[dp(8), dp(8), dp(8), dp(8)], 
+            spacing=dp(8),
             has_border=True
         )
         self.sidebar.add_widget(self.my_profile_box)
         self.main_split.add_widget(self.sidebar)
 
         # --- Main Chat Window Area (Right Pane) ---
-        self.chat_pane = BackgroundBoxLayout(bg_color=COLOR_SURFACE, orientation='vertical', size_hint_x=0.70)
+        self.chat_pane = BackgroundBoxLayout(bg_color=COLOR_SURFACE, orientation='vertical', size_hint_x=0.65)
 
-        # Premium Chat Pane Header Context Bar
         self.chat_header = BackgroundBoxLayout(
             bg_color=COLOR_BG, 
             orientation='horizontal', 
-            size_hint_y=0.10, 
-            padding=[24, 12, 24, 12],
+            size_hint_y=0.12, 
+            padding=[dp(16), dp(8), dp(16), dp(8)],
             has_border=True,
             border_color=COLOR_BORDER
         )
+        
+        self.toggle_sidebar_btn = InteractiveButton(
+            text="Peers",
+            size_hint=(None, None),
+            size=(dp(65), dp(36)),
+            pos_hint={'center_y': 0.5},
+            radius=[6]
+        )
+        self.toggle_sidebar_btn.bind(on_release=self.toggle_sidebar)
+        self.chat_header.add_widget(self.toggle_sidebar_btn)
+
         self.chat_title = Label(
-            text="Select an active mesh peer from the left sidebar to initialize encryption",
+            text="Select an active mesh peer from the sidebar.",
             bold=True,
-            font_size='13sp',
+            font_size='11sp',
             color=COLOR_TEXT_MUTED,
             halign="left",
             valign="middle"
@@ -317,17 +328,15 @@ class ChatScreen(Screen):
         self.chat_header.add_widget(self.chat_title)
         self.chat_pane.add_widget(self.chat_header)
 
-        # Chat Message Viewport Feed
-        self.feed_scroll = ScrollView(size_hint_y=0.78, do_scroll_x=False)
-        self.feed_layout = GridLayout(cols=1, spacing=16, size_hint_y=None, padding=[24, 24, 24, 24])
+        self.feed_scroll = ScrollView(size_hint_y=0.76, do_scroll_x=False)
+        self.feed_layout = GridLayout(cols=1, spacing=dp(12), size_hint_y=None, padding=[dp(16), dp(16), dp(16), dp(16)])
         self.feed_layout.bind(minimum_height=self.feed_layout.setter('height'))
         self.feed_scroll.add_widget(self.feed_layout)
         self.chat_pane.add_widget(self.feed_scroll)
 
-        # Input & Actions Footer Toolbar
-        self.bottom_bar = BoxLayout(orientation='horizontal', size_hint_y=0.12, padding=[24, 12, 24, 16], spacing=12)
+        self.bottom_bar = BoxLayout(orientation='horizontal', size_hint_y=0.12, padding=[dp(16), dp(8), dp(16), dp(12)], spacing=dp(10))
         self.entry_field = PremiumTextInput(
-            hint_text="Terminal offline. Select client identity...",
+            hint_text="Terminal offline. Select identity...",
             multiline=False,
             disabled=True
         )
@@ -337,7 +346,7 @@ class ChatScreen(Screen):
         self.send_btn = InteractiveButton(
             text="SEND",
             disabled=True,
-            size_hint_x=0.15,
+            size_hint_x=0.20,
             bg_color=COLOR_PRIMARY
         )
         self.send_btn.bind(on_release=self.send_click)
@@ -347,13 +356,44 @@ class ChatScreen(Screen):
         self.main_split.add_widget(self.chat_pane)
 
         self.add_widget(self.main_split)
+        
+        # Determine layout sizing instantly on run
+        self._adjust_layout(Window, Window.width, Window.height)
+
+    def _adjust_layout(self, window, width, height):
+        if width < dp(550): # Mobile layout breakpoint
+            self.sidebar.size_hint_x = 0
+            self.sidebar.opacity = 0
+            self.chat_pane.size_hint_x = 1
+            self.toggle_sidebar_btn.opacity = 1
+            self.toggle_sidebar_btn.disabled = False
+            self.toggle_sidebar_btn.size_hint = (None, None)
+            self.toggle_sidebar_btn.width = dp(65)
+        else: # Desktop layout mode
+            self.sidebar.size_hint_x = 0.32
+            self.sidebar.opacity = 1
+            self.chat_pane.size_hint_x = 0.68
+            self.toggle_sidebar_btn.opacity = 0
+            self.toggle_sidebar_btn.disabled = True
+            self.toggle_sidebar_btn.size_hint = (None, None)
+            self.toggle_sidebar_btn.width = 0
+
+    def toggle_sidebar(self, instance):
+        if self.sidebar.size_hint_x == 0:
+            self.sidebar.size_hint_x = 0.85
+            self.sidebar.opacity = 1
+            self.chat_pane.size_hint_x = 0.15
+        else:
+            self.sidebar.size_hint_x = 0
+            self.sidebar.opacity = 0
+            self.chat_pane.size_hint_x = 1
 
     def populate_my_profile(self):
         self.my_profile_box.clear_widgets()
         profile = self.app.my_profile
         
         avatar_widget = VisualAvatar(username=profile['username'], size=(36, 36))
-        text_layout = BoxLayout(orientation='vertical', spacing=2)
+        text_layout = BoxLayout(orientation='vertical', spacing=dp(2))
         
         name_lbl = Label(text=f"[b]{profile['username']}[/b]", markup=True, halign="left", font_size='13sp', color=COLOR_TEXT_PRIMARY)
         status_lbl = Label(text=f"[size=10sp]{profile['status']}[/size]", markup=True, halign="left", color=COLOR_TEXT_MUTED)
@@ -376,20 +416,19 @@ class ChatScreen(Screen):
             is_online = info.get('online', False)
             status_text = info['status'] if is_online else 'Offline Node'
             
-            # Interactive container for sidebar items
             bg_color = COLOR_PRIMARY if is_selected else (COLOR_SURFACE_LIGHT if is_online else COLOR_BG)
             peer_container = BackgroundBoxLayout(
                 bg_color=bg_color,
                 radius=[8],
                 orientation='horizontal',
                 size_hint_y=None,
-                height=60,
-                padding=[8, 8, 8, 8],
-                spacing=10
+                height=dp(56),
+                padding=[dp(6), dp(6), dp(6), dp(6)],
+                spacing=dp(8)
             )
             
-            avatar = VisualAvatar(username=info['username'], size=(36, 36))
-            text_container = BoxLayout(orientation='vertical', spacing=2)
+            avatar = VisualAvatar(username=info['username'], size=(32, 32))
+            text_container = BoxLayout(orientation='vertical', spacing=dp(1))
             
             peer_name = Label(
                 text=f"[b]{info['username']}[/b]", 
@@ -403,7 +442,7 @@ class ChatScreen(Screen):
             
             status_dot = "🟢" if is_online else "🔴"
             peer_status = Label(
-                text=f"{status_dot} [size=10sp]{status_text}[/size]", 
+                text=f"{status_dot} [size=9sp]{status_text}[/size]", 
                 markup=True, 
                 halign="left", 
                 valign="middle", 
@@ -420,13 +459,10 @@ class ChatScreen(Screen):
             if not is_online:
                 peer_container.opacity = 0.5
                 
-            # Bind physical clicks to component selection trigger
             btn = Button(background_color=(0, 0, 0, 0), size_hint=(1, 1))
             btn.bind(on_release=lambda instance, ip_ref=ip: self.select_friend(ip_ref))
             
-            outer_overlay = BoxLayout(size_hint_y=None, height=60)
-            peer_container.add_widget(btn) # Add invisible button into composition
-            
+            peer_container.add_widget(btn)
             self.peers_list.add_widget(peer_container)
 
     def select_friend(self, ip):
@@ -434,7 +470,7 @@ class ChatScreen(Screen):
         info = self.app.active_peers[ip]
         is_online = info.get('online', False)
         
-        self.chat_title.text = f"💬  CONNECTING ENCRYPTED TUNNEL TO:  [b]{info['username'].upper()}[/b] ({'ONLINE' if is_online else 'OFFLINE'})"
+        self.chat_title.text = f"💬 [b]{info['username'].upper()}[/b]"
         self.chat_title.markup = True
         
         if is_online:
@@ -444,10 +480,15 @@ class ChatScreen(Screen):
         else:
             self.entry_field.disabled = True
             self.send_btn.disabled = True
-            self.entry_field.hint_text = "Target offline. History visualization mode active."
+            self.entry_field.hint_text = "Offline. View mode only."
 
         self.refresh_chat_display()
         self.update_friends_list()
+        
+        if Window.width < dp(550):
+            self.sidebar.size_hint_x = 0
+            self.sidebar.opacity = 0
+            self.chat_pane.size_hint_x = 1
         
         if is_online:
             self.entry_field.focus = True
@@ -480,20 +521,19 @@ class ChatScreen(Screen):
                 is_me = item["is_me"]
                 
                 bubble_layout = BoxLayout(orientation='horizontal', size_hint_y=None)
-                spacer = Label(size_hint_x=0.25)
+                spacer = Label(size_hint_x=0.20)
                 
-                bubble_text = f"{item['text']}" if is_me else f"[b][size=11sp][color=4F66ED]{item['sender']}[/color][/size][/b]\n{item['text']}"
+                bubble_text = f"{item['text']}" if is_me else f"[b][size=10sp][color=4F66ED]{item['sender']}[/color][/size][/b]\n{item['text']}"
                 bubble_color = COLOR_PRIMARY if is_me else COLOR_SURFACE_LIGHT
-                # Sophisticated dynamic professional asymmetric rounding
-                bubble_radius = [14, 14, 4, 14] if is_me else [14, 14, 14, 4]
+                bubble_radius = [12, 12, 3, 12] if is_me else [12, 12, 12, 3]
                 
                 bubble = BackgroundBoxLayout(
                     bg_color=bubble_color,
                     radius=bubble_radius,
                     orientation='vertical',
-                    size_hint_x=0.75,
+                    size_hint_x=0.80,
                     size_hint_y=None,
-                    padding=[16, 12, 16, 12]
+                    padding=[dp(12), dp(10), dp(12), dp(10)]
                 )
                 
                 lbl = Label(
@@ -504,12 +544,12 @@ class ChatScreen(Screen):
                     valign="top",
                     color=COLOR_TEXT_PRIMARY,
                     font_size='13sp',
-                    line_height=1.2
+                    line_height=1.15
                 )
                 lbl.bind(size=lambda s, w: setattr(s, 'text_size', (s.width, None)))
                 lbl.bind(texture_size=lambda s, t_sz: setattr(s, 'height', t_sz[1]))
-                lbl.bind(height=lambda s, h: setattr(s.parent, 'height', h + 24))
-                lbl.bind(height=lambda s, h: setattr(s.parent.parent, 'height', h + 24))
+                lbl.bind(height=lambda s, h: setattr(s.parent, 'height', h + dp(20)))
+                lbl.bind(height=lambda s, h: setattr(s.parent.parent, 'height', h + dp(20)))
                 
                 bubble.add_widget(lbl)
                 
@@ -525,12 +565,10 @@ class ChatScreen(Screen):
             self.feed_scroll.scroll_y = 0
 
 
-# ==========================================
-# 3. KIVY APPLICATION CONTROLLER
-# ==========================================
-class P2PChatKivyApp(App):
+# ==========================================# 3. MESSENGO CONTROLLER# ==========================================
+class MessengoApp(App):
     def build(self):
-        self.title = "Decentralized Mesh Messenger"
+        self.title = "Messengo"
         
         self.sock = None
         self.my_profile = {}
@@ -687,6 +725,5 @@ class P2PChatKivyApp(App):
             except Exception:
                 break
 
-
 if __name__ == "__main__":
-    P2PChatKivyApp().run()
+    MessengoApp().run()
