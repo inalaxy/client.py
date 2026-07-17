@@ -431,8 +431,8 @@ class ChatScreen(Screen):
         self.peers_list.clear_widgets()
         sorted_peers = sorted(self.app.active_peers.items(), key=lambda item: item[1].get('online', False), reverse=True)
 
-        for ip, info in sorted_peers:
-            is_selected = (ip == self.app.selected_ip)
+        for username, info in sorted_peers:
+            is_selected = (username == self.app.selected_username)
             is_online = info.get('online', False)
             status_text = info['status'] if is_online else 'Offline Node'
             
@@ -447,11 +447,11 @@ class ChatScreen(Screen):
                 spacing=dp(8)
             )
             
-            avatar = VisualAvatar(username=info['username'], size=(32, 32))
+            avatar = VisualAvatar(username=username, size=(32, 32))
             text_container = BoxLayout(orientation='vertical', spacing=dp(1))
             
             peer_name = Label(
-                text=f"[b]{info['username']}[/b]", 
+                text=f"[b]{username}[/b]", 
                 markup=True, 
                 halign="left", 
                 valign="middle", 
@@ -480,17 +480,17 @@ class ChatScreen(Screen):
                 peer_container.opacity = 0.5
                 
             btn = Button(background_color=(0, 0, 0, 0), size_hint=(1, 1))
-            btn.bind(on_release=lambda instance, ip_ref=ip: self.select_friend(ip_ref))
+            btn.bind(on_release=lambda instance, u_ref=username: self.select_friend(u_ref))
             
             peer_container.add_widget(btn)
             self.peers_list.add_widget(peer_container)
 
-    def select_friend(self, ip):
-        self.app.selected_ip = ip
-        info = self.app.active_peers[ip]
+    def select_friend(self, username):
+        self.app.selected_username = username
+        info = self.app.active_peers[username]
         is_online = info.get('online', False)
         
-        self.chat_title.text = f"💬 [b]{info['username'].upper()}[/b]"
+        self.chat_title.text = f"💬 [b]{username.upper()}[/b]"
         self.chat_title.markup = True
         
         if is_online:
@@ -518,17 +518,21 @@ class ChatScreen(Screen):
 
     def send_click(self, instance):
         msg_text = self.entry_field.text.strip()
-        if msg_text and self.app.selected_ip:
+        if msg_text and self.app.selected_username:
+            peer_info = self.app.active_peers.get(self.app.selected_username)
+            if not peer_info or not peer_info.get("ip"):
+                return  # Safe escape if IP is missing
+            
             payload = f"MSG:{msg_text}"
             try:
-                self.app.sock.sendto(payload.encode('utf-8'), (self.app.selected_ip, PORT))
-                self.app.chat_history[self.app.selected_ip].append({
+                self.app.sock.sendto(payload.encode('utf-8'), (peer_info["ip"], PORT))
+                self.app.chat_history[self.app.selected_username].append({
                     "sender": "You",
                     "text": msg_text,
                     "is_me": True
                 })
                 
-                self.app.chats_store.put(self.app.selected_ip, history=self.app.chat_history[self.app.selected_ip])
+                self.app.chats_store.put(self.app.selected_username, history=self.app.chat_history[self.app.selected_username])
                 
                 self.entry_field.text = ""
                 self.refresh_chat_display()
@@ -538,9 +542,9 @@ class ChatScreen(Screen):
 
     def refresh_chat_display(self):
         self.feed_layout.clear_widgets()
-        ip = self.app.selected_ip
-        if ip in self.app.chat_history:
-            for item in self.app.chat_history[ip]:
+        username = self.app.selected_username
+        if username in self.app.chat_history:
+            for item in self.app.chat_history[username]:
                 is_me = item["is_me"]
                 
                 bubble_layout = BoxLayout(orientation='horizontal', size_hint_y=None)
@@ -595,9 +599,9 @@ class MessengoApp(App):
         
         self.sock = None
         self.my_profile = {}
-        self.active_peers = {}     
-        self.chat_history = {}     
-        self.selected_ip = None
+        self.active_peers = {}     # Keyed by username instead of IP
+        self.chat_history = {}     # Keyed by username instead of IP
+        self.selected_username = None
         self.my_ip = "127.0.0.1"
 
         self.store = JsonStore('user_profile.json')
@@ -626,17 +630,19 @@ class MessengoApp(App):
         return self.sm
 
     def load_persisted_data(self):
-        for ip in self.peers_store.keys():
-            peer_data = self.peers_store.get(ip)
-            self.active_peers[ip] = {
-                "username": peer_data.get("username", "Unknown"),
+        # Migrating storage access from IP-based keys to username keys
+        for username in self.peers_store.keys():
+            peer_data = self.peers_store.get(username)
+            self.active_peers[username] = {
+                "username": username,
                 "status": peer_data.get("status", ""),
-                "online": False
+                "online": False,
+                "ip": peer_data.get("ip", None)  # Might be stale, will update when online
             }
             
-        for ip in self.chats_store.keys():
-            chat_data = self.chats_store.get(ip)
-            self.chat_history[ip] = chat_data.get("history", [])
+        for username in self.chats_store.keys():
+            chat_data = self.chats_store.get(username)
+            self.chat_history[username] = chat_data.get("history", [])
 
     def setup_network_and_ui(self):
         self.chat_screen.populate_my_profile()
@@ -704,17 +710,19 @@ class MessengoApp(App):
                             username = payload.get("username", "Unknown")
                             status = payload.get("status", "")
                             
-                            self.active_peers[ip] = {
+                            # Bind network states and active IP properties directly to the unique Username
+                            self.active_peers[username] = {
                                 "username": username,
                                 "status": status,
-                                "online": True
+                                "online": True,
+                                "ip": ip  # Dynamically assign current detected network path
                             }
                             
-                            self.peers_store.put(ip, username=username, status=status)
+                            self.peers_store.put(username, username=username, status=status, ip=ip)
                             
-                            if ip not in self.chat_history:
-                                self.chat_history[ip] = []
-                                self.chats_store.put(ip, history=[])
+                            if username not in self.chat_history:
+                                self.chat_history[username] = []
+                                self.chats_store.put(username, history=[])
                                 
                             if msg_type == "DISCOVER":
                                 reply = {
@@ -731,18 +739,28 @@ class MessengoApp(App):
                         
                 elif message.startswith("MSG:"):
                     actual_msg = message.split(":", 1)[1]
-                    peer_data = self.active_peers.get(ip, {"username": "Unknown"})
-                    sender_display = f"{peer_data['username']}"
                     
-                    self.chat_history.setdefault(ip, []).append({
-                        "sender": sender_display,
+                    # Find sender username associated with the incoming packet IP
+                    sender_username = "Unknown"
+                    for uname, info in self.active_peers.items():
+                        if info.get("ip") == ip:
+                            sender_username = uname
+                            break
+                    
+                    if sender_username == "Unknown":
+                        # If we received a message before getting a DISCOVER packet from them,
+                        # fallback to finding peer database mappings or save temporarily
+                        continue
+                    
+                    self.chat_history.setdefault(sender_username, []).append({
+                        "sender": sender_username,
                         "text": actual_msg,
                         "is_me": False
                     })
                     
-                    self.chats_store.put(ip, history=self.chat_history[ip])
+                    self.chats_store.put(sender_username, history=self.chat_history[sender_username])
                     
-                    if self.selected_ip == ip:
+                    if self.selected_username == sender_username:
                         Clock.schedule_once(lambda dt: self.chat_screen.refresh_chat_display())
                         
             except Exception:
