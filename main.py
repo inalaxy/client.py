@@ -94,7 +94,7 @@ class VisualAvatar(BoxLayout):
             
         self.lbl = Label(
             text=self.initials,
-            font_size=str(int(self.height * 0.38)) + 'sp',
+            font_size=str(int(scaled_size[1] * 0.38)) + 'sp',
             bold=True,
             color=(1, 1, 1, 1),
             halign="center",
@@ -358,18 +358,14 @@ class ChatScreen(Screen):
 
         self.add_widget(self.main_split)
         
-        # Determine layout sizing instantly on run
         self._adjust_layout(Window, Window.width, Window.height)
 
     def _adjust_layout(self, window, width, height):
         if width < dp(550): # Mobile layout breakpoint
-            # Completely hide the sidebar from dynamic sizing calculations
             self.sidebar.size_hint_x = None
             self.sidebar.width = 0
             self.sidebar.opacity = 0
             self.sidebar.disabled = True
-            
-            # Allow chat pane to take up 100% of the screen width safely
             self.chat_pane.size_hint_x = 1.0
             
             self.toggle_sidebar_btn.opacity = 1
@@ -377,11 +373,9 @@ class ChatScreen(Screen):
             self.toggle_sidebar_btn.size_hint = (None, None)
             self.toggle_sidebar_btn.width = dp(65)
         else: # Desktop layout mode
-            # Restore standard layout split ratio (0.32 + 0.68 = 1.0)
             self.sidebar.size_hint_x = 0.32
             self.sidebar.opacity = 1
             self.sidebar.disabled = False
-            
             self.chat_pane.size_hint_x = 0.68
             
             self.toggle_sidebar_btn.opacity = 0
@@ -391,26 +385,22 @@ class ChatScreen(Screen):
 
     def toggle_sidebar(self, instance):
         if self.sidebar.opacity == 0:
-            # Open Sidebar on mobile
             self.sidebar.size_hint_x = 0.80
             self.sidebar.opacity = 1
             self.sidebar.disabled = False
-            
-            # Shrink chat pane accordingly so it stays cleanly positioned on-screen
             self.chat_pane.size_hint_x = 0.20
         else:
-            # Close Sidebar completely 
             self.sidebar.size_hint_x = None
             self.sidebar.width = 0
             self.sidebar.opacity = 0
             self.sidebar.disabled = True
-            
-            # Give chat pane back full viewport width
             self.chat_pane.size_hint_x = 1.0
 
     def populate_my_profile(self):
         self.my_profile_box.clear_widgets()
         profile = self.app.my_profile
+        if not profile:
+            return
         
         avatar_widget = VisualAvatar(username=profile['username'], size=(36, 36))
         text_layout = BoxLayout(orientation='vertical', spacing=dp(2))
@@ -487,7 +477,7 @@ class ChatScreen(Screen):
 
     def select_friend(self, username):
         self.app.selected_username = username
-        info = self.app.active_peers[username]
+        info = self.app.active_peers.get(username, {})
         is_online = info.get('online', False)
         
         self.chat_title.text = f"💬 [b]{username.upper()}[/b]"
@@ -506,7 +496,6 @@ class ChatScreen(Screen):
         self.update_friends_list()
         
         if Window.width < dp(550):
-            # When selecting a peer in mobile layout, auto-close the sidebar
             self.sidebar.size_hint_x = None
             self.sidebar.width = 0
             self.sidebar.opacity = 0
@@ -521,12 +510,12 @@ class ChatScreen(Screen):
         if msg_text and self.app.selected_username:
             peer_info = self.app.active_peers.get(self.app.selected_username)
             if not peer_info or not peer_info.get("ip"):
-                return  # Safe escape if IP is missing
+                return
             
             payload = f"MSG:{msg_text}"
             try:
                 self.app.sock.sendto(payload.encode('utf-8'), (peer_info["ip"], PORT))
-                self.app.chat_history[self.app.selected_username].append({
+                self.app.chat_history.setdefault(self.app.selected_username, []).append({
                     "sender": "You",
                     "text": msg_text,
                     "is_me": True
@@ -547,7 +536,7 @@ class ChatScreen(Screen):
             for item in self.app.chat_history[username]:
                 is_me = item["is_me"]
                 
-                bubble_layout = BoxLayout(orientation='horizontal', size_hint_y=None)
+                bubble_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(40))
                 spacer = Label(size_hint_x=0.20)
                 
                 bubble_text = f"{item['text']}" if is_me else f"[b][size=10sp][color=4F66ED]{item['sender']}[/color][/size][/b]\n{item['text']}"
@@ -573,10 +562,10 @@ class ChatScreen(Screen):
                     font_size='13sp',
                     line_height=1.15
                 )
-                lbl.bind(size=lambda s, w: setattr(s, 'text_size', (s.width, None)))
-                lbl.bind(texture_size=lambda s, t_sz: setattr(s, 'height', t_sz[1]))
-                lbl.bind(height=lambda s, h: setattr(s.parent, 'height', h + dp(20)))
-                lbl.bind(height=lambda s, h: setattr(s.parent.parent, 'height', h + dp(20)))
+                
+                # Safe native height-tracking engine adjustments without memory leak wrappers
+                lbl.bind(width=lambda s, w: setattr(s, 'text_size', (w, None)))
+                lbl.bind(texture_size=lambda s, t_sz: self._adjust_bubble_heights(s, t_sz, bubble, bubble_layout))
                 
                 bubble.add_widget(lbl)
                 
@@ -591,6 +580,11 @@ class ChatScreen(Screen):
                 
             self.feed_scroll.scroll_y = 0
 
+    def _adjust_bubble_heights(self, label_instance, texture_size, bubble, bubble_layout):
+        label_instance.height = texture_size[1]
+        bubble.height = texture_size[1] + dp(20)
+        bubble_layout.height = bubble.height
+
 
 # ==========================================# 3. MESSENGO CONTROLLER# ==========================================
 class MessengoApp(App):
@@ -599,8 +593,8 @@ class MessengoApp(App):
         
         self.sock = None
         self.my_profile = {}
-        self.active_peers = {}     # Keyed by username instead of IP
-        self.chat_history = {}     # Keyed by username instead of IP
+        self.active_peers = {}     
+        self.chat_history = {}     
         self.selected_username = None
         self.my_ip = "127.0.0.1"
 
@@ -630,14 +624,14 @@ class MessengoApp(App):
         return self.sm
 
     def load_persisted_data(self):
-        # Migrating storage access from IP-based keys to username keys
         for username in self.peers_store.keys():
             peer_data = self.peers_store.get(username)
             self.active_peers[username] = {
                 "username": username,
                 "status": peer_data.get("status", ""),
                 "online": False,
-                "ip": peer_data.get("ip", None)  # Might be stale, will update when online
+                "ip": peer_data.get("ip", None),
+                "last_seen": 0
             }
             
         for username in self.chats_store.keys():
@@ -652,6 +646,9 @@ class MessengoApp(App):
         
         threading.Thread(target=self.receive_loop, daemon=True).start()
         threading.Thread(target=self.broadcast_presence, daemon=True).start()
+        
+        # Monitor heartbeats periodically inside the Main Thread
+        Clock.schedule_interval(self.check_peer_timeouts, 7.0)
 
     def get_local_ip(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -710,20 +707,9 @@ class MessengoApp(App):
                             username = payload.get("username", "Unknown")
                             status = payload.get("status", "")
                             
-                            # Bind network states and active IP properties directly to the unique Username
-                            self.active_peers[username] = {
-                                "username": username,
-                                "status": status,
-                                "online": True,
-                                "ip": ip  # Dynamically assign current detected network path
-                            }
+                            # Dispatched safe injection back onto the Main Kivy thread
+                            Clock.schedule_once(lambda dt, u=username, s=status, i=ip: self._safe_update_peer(u, s, i))
                             
-                            self.peers_store.put(username, username=username, status=status, ip=ip)
-                            
-                            if username not in self.chat_history:
-                                self.chat_history[username] = []
-                                self.chats_store.put(username, history=[])
-                                
                             if msg_type == "DISCOVER":
                                 reply = {
                                     "type": "DISCOVER_ACK",
@@ -731,16 +717,13 @@ class MessengoApp(App):
                                     "status": self.my_profile["status"]
                                 }
                                 self.sock.sendto(json.dumps(reply).encode('utf-8'), (ip, PORT))
-                            
-                            Clock.schedule_once(lambda dt: self.chat_screen.update_friends_list())
-                                
+                                    
                     except json.JSONDecodeError:
                         pass
                         
                 elif message.startswith("MSG:"):
                     actual_msg = message.split(":", 1)[1]
                     
-                    # Find sender username associated with the incoming packet IP
                     sender_username = "Unknown"
                     for uname, info in self.active_peers.items():
                         if info.get("ip") == ip:
@@ -748,23 +731,58 @@ class MessengoApp(App):
                             break
                     
                     if sender_username == "Unknown":
-                        # If we received a message before getting a DISCOVER packet from them,
-                        # fallback to finding peer database mappings or save temporarily
                         continue
                     
-                    self.chat_history.setdefault(sender_username, []).append({
-                        "sender": sender_username,
-                        "text": actual_msg,
-                        "is_me": False
-                    })
-                    
-                    self.chats_store.put(sender_username, history=self.chat_history[sender_username])
-                    
-                    if self.selected_username == sender_username:
-                        Clock.schedule_once(lambda dt: self.chat_screen.refresh_chat_display())
+                    Clock.schedule_once(lambda dt, s=sender_username, m=actual_msg: self._safe_append_message(s, m))
                         
             except Exception:
                 break
+
+    # --- MAIN THREAD SAFE OPERATIONS CALLBACKS ---
+
+    def _safe_update_peer(self, username, status, ip):
+        self.active_peers[username] = {
+            "username": username,
+            "status": status,
+            "online": True,
+            "ip": ip,
+            "last_seen": time.time()
+        }
+        self.peers_store.put(username, username=username, status=status, ip=ip)
+        
+        if username not in self.chat_history:
+            self.chat_history[username] = []
+            self.chats_store.put(username, history=[])
+            
+        self.chat_screen.update_friends_list()
+        if self.selected_username == username:
+            self.chat_screen.select_friend(username)
+
+    def _safe_append_message(self, sender_username, actual_msg):
+        self.chat_history.setdefault(sender_username, []).append({
+            "sender": sender_username,
+            "text": actual_msg,
+            "is_me": False
+        })
+        self.chats_store.put(sender_username, history=self.chat_history[sender_username])
+        
+        if self.selected_username == sender_username:
+            self.chat_screen.refresh_chat_display()
+
+    def check_peer_timeouts(self, dt):
+        cutoff = time.time() - 15.0  # Drops peers if inactive for 15 seconds
+        changed = False
+        
+        for username, info in self.active_peers.items():
+            if info.get("online", False) and info.get("last_seen", 0) < cutoff:
+                info["online"] = False
+                changed = True
+                if self.selected_username == username:
+                    # Instantly disable input fields if the focused user drops off
+                    self.chat_screen.select_friend(username)
+                    
+        if changed:
+            self.chat_screen.update_friends_list()
 
 if __name__ == "__main__":
     MessengoApp().run()
