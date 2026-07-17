@@ -7,7 +7,7 @@ title = Messengo
 package.name = messengo
 
 # (str) Package domain (needed to build unique app id)
-package.domain = org.yourname
+package.domain = org.messengo
 
 # (str) Source code directory
 source.dir = .
@@ -19,13 +19,14 @@ source.include_exts = py,png,jpg,kv,atlas,json
 version = 0.1
 
 # (list) Application requirements
-# Critical: added openssl and sqlite3 to correctly enable dynamic hashing and persistent JSON local profiles on Android
-requirements = python3,kivy,openssl,sqlite3
+# Added hostpython3 which is necessary for the build process.
+requirements = hostpython3,python3,kivy,openssl,sqlite3
 
 # (list) Network permissions for P2P local discovery broadcasts
-android.permissions = INTERNET, ACCESS_WIFI_STATE, CHANGE_WIFI_MULTICAST_STATE, ACCESS_NETWORK_STATE
+# Added CHANGE_WIFI_STATE to support local peer socket bindings and UDP broadcasts on Android
+android.permissions = INTERNET, ACCESS_WIFI_STATE, CHANGE_WIFI_STATE, CHANGE_WIFI_MULTICAST_STATE, ACCESS_NETWORK_STATE
 
-# (str) Supported orientation
+# (str) Supported orientation (set to landscape, portrait or all)
 orientation = portrait
 
 # (int) Target Android API (Modern target matching Android requirements)
@@ -43,4 +44,5 @@ android.archs = arm64-v8a, armeabi-v7a
 # (bool) Enable Android cloud backup
 android.allow_backup = True
 
+# (int) Fullscreen mode (0 = Status bar visible, 1 = Status bar hidden)
 fullscreen = 0
