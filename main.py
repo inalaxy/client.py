@@ -54,6 +54,7 @@ def get_avatar_color(username: str) -> tuple:
     hash_val = int(hashlib.md5(username.lower().encode('utf-8')).hexdigest(), 16)
     return AVATAR_COLORS[hash_val % len(AVATAR_COLORS)]
 
+
 # --- HIGH-END CUSTOM UI COMPONENTS WITH DYNAMIC DENSITY SCALING ---
 
 class BackgroundBoxLayout(BoxLayout):
@@ -362,31 +363,50 @@ class ChatScreen(Screen):
 
     def _adjust_layout(self, window, width, height):
         if width < dp(550): # Mobile layout breakpoint
-            self.sidebar.size_hint_x = 0
+            # Completely hide the sidebar from dynamic sizing calculations
+            self.sidebar.size_hint_x = None
+            self.sidebar.width = 0
             self.sidebar.opacity = 0
-            self.chat_pane.size_hint_x = 1
+            self.sidebar.disabled = True
+            
+            # Allow chat pane to take up 100% of the screen width safely
+            self.chat_pane.size_hint_x = 1.0
+            
             self.toggle_sidebar_btn.opacity = 1
             self.toggle_sidebar_btn.disabled = False
             self.toggle_sidebar_btn.size_hint = (None, None)
             self.toggle_sidebar_btn.width = dp(65)
         else: # Desktop layout mode
+            # Restore standard layout split ratio (0.32 + 0.68 = 1.0)
             self.sidebar.size_hint_x = 0.32
             self.sidebar.opacity = 1
+            self.sidebar.disabled = False
+            
             self.chat_pane.size_hint_x = 0.68
+            
             self.toggle_sidebar_btn.opacity = 0
             self.toggle_sidebar_btn.disabled = True
             self.toggle_sidebar_btn.size_hint = (None, None)
             self.toggle_sidebar_btn.width = 0
 
     def toggle_sidebar(self, instance):
-        if self.sidebar.size_hint_x == 0:
-            self.sidebar.size_hint_x = 0.85
+        if self.sidebar.opacity == 0:
+            # Open Sidebar on mobile
+            self.sidebar.size_hint_x = 0.80
             self.sidebar.opacity = 1
-            self.chat_pane.size_hint_x = 0.15
+            self.sidebar.disabled = False
+            
+            # Shrink chat pane accordingly so it stays cleanly positioned on-screen
+            self.chat_pane.size_hint_x = 0.20
         else:
-            self.sidebar.size_hint_x = 0
+            # Close Sidebar completely 
+            self.sidebar.size_hint_x = None
+            self.sidebar.width = 0
             self.sidebar.opacity = 0
-            self.chat_pane.size_hint_x = 1
+            self.sidebar.disabled = True
+            
+            # Give chat pane back full viewport width
+            self.chat_pane.size_hint_x = 1.0
 
     def populate_my_profile(self):
         self.my_profile_box.clear_widgets()
@@ -486,9 +506,12 @@ class ChatScreen(Screen):
         self.update_friends_list()
         
         if Window.width < dp(550):
-            self.sidebar.size_hint_x = 0
+            # When selecting a peer in mobile layout, auto-close the sidebar
+            self.sidebar.size_hint_x = None
+            self.sidebar.width = 0
             self.sidebar.opacity = 0
-            self.chat_pane.size_hint_x = 1
+            self.sidebar.disabled = True
+            self.chat_pane.size_hint_x = 1.0
         
         if is_online:
             self.entry_field.focus = True
