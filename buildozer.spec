@@ -19,11 +19,11 @@ source.include_exts = py,png,jpg,kv,atlas,json
 version = 0.1
 
 # (list) Application requirements
-# Added hostpython3 which is necessary for the build process.
-requirements = hostpython3,python3,kivy,openssl,sqlite3
+# hostpython3 and sqlite3 are removed. pyjnius is added to ensure smooth JNI interaction on Android.
+requirements = python3,kivy,openssl,pyjnius
 
 # (list) Network permissions for P2P local discovery broadcasts
-# Added CHANGE_WIFI_STATE to support local peer socket bindings and UDP broadcasts on Android
+# Crucial permissions for network access, interface state queries, and UDP multicast broadcasting.
 android.permissions = INTERNET, ACCESS_WIFI_STATE, CHANGE_WIFI_STATE, CHANGE_WIFI_MULTICAST_STATE, ACCESS_NETWORK_STATE
 
 # (str) Supported orientation (set to landscape, portrait or all)
